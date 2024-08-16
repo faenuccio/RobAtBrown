@@ -19,8 +19,8 @@ namespace LoVe
 
 /- ## Question 1 (4 points): A Type of Terms
 
-The *simply typed lambda calculus* is a very basic version of the language of 
-Lean. In this language we have only variables, lambda expressions (a.k.a. 
+The *simply typed lambda calculus* is a very basic version of the language of
+Lean. In this language we have only variables, lambda expressions (a.k.a.
 anonymous functions), and applications.
 
 Here are some examples of terms in this language:
@@ -62,32 +62,38 @@ Lean definition below. The definition should distinguish two cases, like `Even`,
 and should not rely on `Even`. -/
 
 inductive Odd : ℕ → Prop
--- supply the missing cases here
+| one : Odd 1
+| add_two (k : ℕ) : Odd k → Odd (k + 2)
 
 /- 2.2 (1 point). Give *proof terms* for the following propositions, based on
 your answer to question 2.1. -/
 
 @[autograded 0.5] theorem Odd_3 :
-  Odd 3 :=
-  sorry
+  Odd 3 := by
+  exact Odd.add_two _ Odd.one
 
 @[autograded 0.5] theorem Odd_5 :
-  Odd 5 :=
-  sorry
+  Odd 5 := by
+  exact Odd.add_two _ Odd_3
 
 /- 2.3 (1 point). Prove the following theorem by rule induction: -/
 
 @[autograded 1] theorem Even_Odd {n : ℕ} (heven : Even n) :
-  Odd (n + 1) :=
-  sorry
+  Odd (n + 1) := by
+  apply Even.rec (motive := fun n _ => Odd (n + 1)) Odd.one _ heven
+  exact fun k _ => Odd.add_two _
 
 /- 2.4 (1 point). Prove the following theorem using rule induction.
 
 Hint: Recall that `¬ a` is defined as `a → false`. -/
 
 @[autograded 1] theorem Even_Not_Odd {n : ℕ} (heven : Even n) :
-  ¬ Odd n :=
-  sorry
+  ¬ Odd n := by
+  apply Even.rec (motive := fun n _ => ¬ Odd n) _ _ heven
+  · rintro ⟨h⟩
+  · rintro k hk H ⟨⟩
+    apply H _
+    assumption
 
 
 infixl:50 " <+ " => List.Sublist
@@ -137,12 +143,25 @@ the `List` constructors in your solution. (Of note, this means that
 
 -- Fill this in:
 inductive IsIn {α : Type} : α → List α → Prop
-
+| ofcons (x : α) (l : List α) : IsIn x (x :: l)
+| ofother (x y : α) (l : List α) : IsIn x l → IsIn x (y :: l)
 
 -- For the rest of this problem, we'll redefine the `∈` and `∉` notation to use
 -- your `IsIn` predicate instead of the default.
 scoped infix:50 (priority := high) " ∈ " => IsIn
 scoped notation:50 (priority := high) x:50 " ∉ " xs:50 => Not (IsIn x xs)
+
+theorem IsIn_Sublist {α : Type} {x : α} {l L : List α} (h : l <+ L) (H : x ∈ l) : x ∈ L := by
+  match L with
+  | [] =>
+    cases h
+    exact H
+  | y :: ys =>
+    rcases h with _ | ⟨a, ha⟩ | @⟨_, _, _,  hM⟩
+    · exact IsIn.ofother _ _ _ <| IsIn_Sublist ha H
+    · rcases H with _ | ⟨_, _, h₁⟩
+      · apply IsIn.ofcons
+      · exact IsIn.ofother _ _ _ <| IsIn_Sublist hM h₁
 
 /- 3.2 (1 point). Define a predicate `NoDuplicates` such that `NoDuplicates xs`
 holds precisely when the list `xs` does not contain any duplicate elements.
@@ -164,6 +183,8 @@ Hint: you may find the `IsIn` (`∈`) predicate you defined above useful! -/
 
 -- Fill this in:
 inductive NoDuplicates {α : Type} : List α → Prop
+| NDnil : NoDuplicates []
+| NDcons (x : α) (l : List α) : NoDuplicates l → x ∉ l → NoDuplicates (x :: l)
 
 
 /- 3.3 (2 points). Equipped with these definitions, prove the theorem we stated
@@ -178,14 +199,31 @@ inducting on, you may need to generalize your induction over that variable. -/
 
 -- You may find this helper lemma useful when writing your proof. (It's possible
 -- to prove this, but we're giving it to you for free.)
-@[legalAxiom]
-axiom not_in_of_not_in_sublist {α : Type} {x : α} {xs ys : List α} :
-  xs <+ ys → x ∉ ys → x ∉ xs
+-- @[legalAxiom]
+/- axiom -/ theorem not_in_of_not_in_sublist {α : Type} {x : α} {xs ys : List α} :
+  xs <+ ys → x ∉ ys → x ∉ xs :=
+  fun h₁ h₂ h₃ ↦ h₂ <| IsIn_Sublist h₁ h₃
+
+lemma noDuplicates_of_cons_noDuplicates {α : Type} {l : List α} {x : α}
+  (hl : NoDuplicates (x :: l)) : NoDuplicates l := by
+  rcases hl with _ | ⟨_, _, h₁, h₂⟩
+  exact h₁
 
 @[autograded 2]
 theorem noDuplicates_sublist_of_noDuplicates {α : Type} (xs ys : List α) :
-  NoDuplicates ys → xs <+ ys → NoDuplicates xs :=
-  sorry
+  NoDuplicates ys → xs <+ ys → NoDuplicates xs := by
+  intro h_NDy h_sub
+  match xs, ys with
+  | _, [] => cases h_sub; exact h_NDy
+  | [], _ => exact NoDuplicates.NDnil
+  | _, b :: bs =>
+    rcases h_sub with _ | ⟨_, h₁⟩ | ⟨_, h₁⟩
+    · exact noDuplicates_sublist_of_noDuplicates _ bs (noDuplicates_of_cons_noDuplicates h_NDy) h₁
+    · apply NoDuplicates.NDcons
+      · exact noDuplicates_sublist_of_noDuplicates _ _ (noDuplicates_of_cons_noDuplicates h_NDy) h₁
+      · apply not_in_of_not_in_sublist h₁
+        cases h_NDy
+        assumption
 
 end NoDupSublists
 
