@@ -36,7 +36,12 @@ conjunctions are gone. Define your tactic as a macro. -/
 
 #check repeat'
 
--- enter your definition here
+-- macro "intro_and" : tactic =>
+--   `(tactic|
+--     repeat' apply And.intro)
+
+macro "intro_and" : tactic =>
+  `(tactic| repeat' apply And.intro)
 
 theorem abcd_bd (a b c d : Prop) (h : a ∧ (b ∧ c) ∧ d) :
   b ∧ d :=
@@ -108,13 +113,32 @@ Here is some pseudocode that you can follow:
 
 6. Return. -/
 
-partial def casesAnd : TacticM Unit :=
-  sorry
+-- partial def casesAnd : TacticM Unit :=
+--   withMainContext
+--     (do
+--        let lctx ← getLCtx
+--        for ldecl in lctx do
+--          if ! LocalDecl.isImplementationDetail ldecl then
+--            if Expr.isAppOfArity (LocalDecl.type ldecl) ``And 2 then
+--              cases (LocalDecl.fvarId ldecl)
+--              casesAnd
+--              return)
 
-elab "cases_and" : tactic =>
-  casesAnd
+partial def casesAnd : TacticM Unit :=
+  withMainContext
+    (do
+      let lctx ← getLCtx
+      for lh in lctx do
+      let eq := Expr.isAppOfArity (LocalDecl.type lh) ``And 2
+      if eq then
+        cases lh.fvarId
+        casesAnd
+        return)
+
+elab "cases_and" : tactic => casesAnd
 
 theorem abcd_bd_again (a b c d : Prop) :
+  -- ((a ∧ b) ∧ c) ∨ d → b ∧ d :=
   a ∧ (b ∧ c) ∧ d → b ∧ d :=
   by
     intro h
@@ -135,11 +159,16 @@ theorem abcd_bd_again (a b c d : Prop) :
 directly by `assumption`. -/
 
 macro "destro_and" : tactic =>
-  sorry
+  `(tactic |
+      (cases_and
+       intro_and
+       all_goals {try assumption} ))
 
 theorem abcd_bd_over_again (a b c d : Prop) (h : a ∧ (b ∧ c) ∧ d) :
   b ∧ d :=
-  by destro_and
+  by
+    cases_and
+    intro_and
 
 theorem abcd_bacb_again (a b c d : Prop) (h : a ∧ (b ∧ c) ∧ d) :
   b ∧ (a ∧ (c ∧ b)) :=
@@ -180,8 +209,13 @@ Hints:
 
 * The "or" connective on `Bool` is called `||`, and equality is called `==`. -/
 
+#print Expr
 def constInExpr (name : Name) (e : Expr) : Bool :=
-  sorry
+  match e with
+  | .const name' _ | .lam name' _ _ _  | .forallE name' _ _ _ | .letE name' _ _ _ _ | .proj name' _ _ =>
+    name' == name
+  | _ => false
+
 
 /- 2.2 (**optional**). Write a function that checks whether an expression
 contains **all** constants in a list.
